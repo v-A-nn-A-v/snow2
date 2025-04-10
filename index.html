@@ -1,83 +1,136 @@
 <!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Snowfall Catcher</title>
-  <!-- Include p5.js and the p5.sound addon -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/addons/p5.sound.min.js"></script>
-  <style>
-    /* Full-screen canvas and start screen styling */
-    body {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      background: #333;
-      color: white;
-      font-family: sans-serif;
-    }
-    #startScreen {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      text-align: center;
-      /* Semi-transparent grey background */
-      background: rgba(128, 128, 128, 0.8);
-      padding: 20px;
-      border-radius: 10px;
-    }
-  </style>
-</head>
-<body>
-  <!-- Start screen: enter nickname and then click Start Game -->
-  <div id="startScreen">
-    <h1>Snowfall Catcher</h1>
-    <p>Please enter your nickname:</p>
-    <input type="text" id="nickname" placeholder="Your nickname">
-    <br><br>
-    <button id="startBtn">Start Game</button>
-  </div>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Snowfall Catcher</title>
+    <!-- p5.js and p5.sound libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/addons/p5.sound.min.js"></script>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+      }
+      .overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(128, 128, 128, 0.8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        z-index: 10;
+      }
+      #game-over {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.75);
+        color: #fff;
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 15;
+        font-size: 32px;
+      }
+      input,
+      button {
+        font-size: 16px;
+        padding: 8px;
+        margin: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Start Screen Overlay -->
+    <div class="overlay" id="start-screen">
+      <h1>Snowfall Catcher</h1>
+      <input type="text" id="nickname" placeholder="Enter your nickname" />
+      <button id="startButton">Start Game</button>
+    </div>
 
-  <script>
-    // Global game state variables
-    let snowflakes = [];
-    let spawnTimer = 0;
-    let spawnInterval = 60;
-    let snowpileHeight = 0;
-    let score = 0;
-    let level = 1;
-    let gameState = "waiting";
-    let nickname = "Anonymous";
-    let gameOverSoundPlayed = false;
+    <!-- Game Over Overlay -->
+    <div id="game-over">
+      <h1>Game Over</h1>
+      <p id="score-display"></p>
+      <button onclick="restartGame()">Play Again</button>
+    </div>
 
-    // Sound variables (if your audio files exist)
-    let bgMusic, captureSound, levelUpSound, gameOverSound;
+    <script>
+      // Global game variables
+      let snowflakes = [];
+      let snowpileHeight = 0;
+      let level = 1;
+      let score = 0;
+      let spawnInterval = 1000; // in milliseconds
+      let lastSpawnTime = 0;
+      let capturedCount = 0;
+      let gameOver = false;
+      let nickname = "Player";
 
-    // Use preload() to try loading audio files; if they fail, set them to null.
-    function preload() {
-      bgMusic = loadSound("background.mp3", ()=>{}, ()=>{ bgMusic = null; });
-      captureSound = loadSound("capture.mp3", ()=>{}, ()=>{ captureSound = null; });
-      levelUpSound = loadSound("levelup.mp3", ()=>{}, ()=>{ levelUpSound = null; });
-      gameOverSound = loadSound("gameover.mp3", ()=>{}, ()=>{ gameOverSound = null; });
-    }
+      // Sound objects
+      let bgMusic, captureSound, levelUpSound, gameOverSound;
 
-    function setup() {
-      createCanvas(windowWidth, windowHeight);
-      textFont('sans-serif');
-    }
+      // Preload sound files
+      function preload() {
+        // Loading sample sound files; replace these URLs with your own audio paths if desired.
+        bgMusic = loadSound(
+          "https://p5js.org/assets/learn/sound/bg.mp3",
+          () => {
+            bgMusic.loop();
+          },
+          () => {
+            console.error("Failed to load background music");
+          }
+        );
+        captureSound = loadSound(
+          "https://p5js.org/assets/learn/sound/exp2.wav",
+          undefined,
+          () => {
+            console.error("Failed to load capture sound");
+          }
+        );
+        levelUpSound = loadSound(
+          "https://p5js.org/assets/learn/sound/exp3.wav",
+          undefined,
+          () => {
+            console.error("Failed to load level up sound");
+          }
+        );
+        gameOverSound = loadSound(
+          "https://p5js.org/assets/learn/sound/exp1.wav",
+          undefined,
+          () => {
+            console.error("Failed to load game over sound");
+          }
+        );
+      }
 
-    function draw() {
-      // Draw a night blue gradient background using brighter blue shades
-      drawNightBlueBackground();
+      // Setup function: Create canvas and initialize settings
+      function setup() {
+        createCanvas(windowWidth, windowHeight);
+        angleMode(DEGREES);
+        noCursor(); // Optionally hide cursor if you want a custom pointer
+      }
 
-      if (gameState === "playing") {
-        spawnTimer++;
-        if (spawnTimer >= spawnInterval) {
-          spawnSnowflake();
-          spawnTimer = 0;
-        }
+      // Main game loop
+      function draw() {
+        // Stop draw loop if game is over (game over overlay will be shown)
+        if (gameOver) return;
+
+        // Render background with vertical gradient
+        drawGradient();
+
+        // Draw the accumulated snowpile at the bottom of the screen
+        noStroke();
+        fill(255);
+        rect(0, height - snowpileHeight, width, snowpileHeight);
 
         // Update and display each snowflake
         for (let i = snowflakes.length - 1; i >= 0; i--) {
@@ -85,141 +138,151 @@
           flake.update();
           flake.display();
 
-          // If the mouse is close to the snowflake, consider it "caught"
-          if (dist(mouseX, mouseY, flake.x, flake.y) < flake.size / 2) {
-            snowflakes.splice(i, 1);
-            score++;
+          // Calculate distance between the cursor and the snowflake
+          let d = dist(mouseX, mouseY, flake.x, flake.y);
+          if (d < flake.size / 2) {
+            // Snowflake is caught (melted)
             if (captureSound && captureSound.isLoaded()) {
               captureSound.play();
             }
-          }
-          // If a snowflake reaches the snowpile, add it to the pile
-          else if (flake.y > (height - snowpileHeight - flake.size / 2)) {
+            score++;
+            capturedCount++;
             snowflakes.splice(i, 1);
-            snowpileHeight += flake.size * 0.5;
+
+            // Increase difficulty every 20 captured snowflakes
+            if (capturedCount % 20 === 0) {
+              level++;
+              // Increase falling speed and spawn frequency (lower interval) but limit the minimum
+              spawnInterval = max(200, spawnInterval - 100);
+              if (levelUpSound && levelUpSound.isLoaded()) {
+                levelUpSound.play();
+              }
+            }
+          }
+          // Snowflake reached the top of the snowpile
+          else if (flake.y - flake.size / 2 > height - snowpileHeight) {
+            snowpileHeight += flake.size * 0.5; // Increase snowpile height modestly
+            snowflakes.splice(i, 1);
+            if (snowpileHeight >= height) {
+              triggerGameOver();
+            }
           }
         }
 
-        updateLevel();
+        // Spawn new snowflakes based on time interval
+        if (millis() - lastSpawnTime > spawnInterval) {
+          snowflakes.push(new Snowflake());
+          lastSpawnTime = millis();
+        }
 
-        // Draw the accumulated snowpile at the bottom
-        noStroke();
-        fill(255);
-        rect(0, height - snowpileHeight, width, snowpileHeight);
-
-        // Display game info
+        // Display HUD (Nickname, Score, Level)
         fill(255);
         textSize(20);
         textAlign(LEFT, TOP);
         text("Nickname: " + nickname, 10, 10);
         text("Score: " + score, 10, 35);
         text("Level: " + level, 10, 60);
+      }
 
-        // Game over condition: when snowpile fills the screen
-        if (snowpileHeight >= height) {
-          if (!gameOverSoundPlayed && gameOverSound && gameOverSound.isLoaded()) {
-            gameOverSound.play();
-            gameOverSoundPlayed = true;
+      // Adjust canvas size on window resize
+      function windowResized() {
+        resizeCanvas(windowWidth, windowHeight);
+      }
+
+      // Function to draw a vertical gradient background
+      function drawGradient() {
+        for (let y = 0; y < height; y++) {
+          let inter = map(y, 0, height, 0, 1);
+          let c = lerpColor(color(10, 10, 50), color(50, 50, 150), inter);
+          stroke(c);
+          line(0, y, width, y);
+        }
+      }
+
+      // Snowflake class definition
+      class Snowflake {
+        constructor() {
+          this.size = random(15, 40);
+          this.x = random(this.size, width - this.size);
+          this.y = -this.size;
+          // Speed mapped to size and level (larger snowflakes start slower)
+          this.speed = map(this.size, 15, 40, 2, 4) + level * 0.5;
+          this.hSpeed = random(-0.5, 0.5); // horizontal drift
+          this.rotation = random(360);
+        }
+
+        update() {
+          this.x += this.hSpeed;
+          this.y += this.speed;
+          this.rotation += 1; // slight rotation for visual effect
+        }
+
+        display() {
+          push();
+          translate(this.x, this.y);
+          rotate(this.rotation);
+          stroke(255);
+          strokeWeight(2);
+          // Draw a 6-branch snowflake with small side branches
+          for (let i = 0; i < 6; i++) {
+            line(0, 0, this.size / 2, 0);
+            push();
+            translate(this.size / 4, 0);
+            rotate(30);
+            line(0, 0, this.size / 8, 0);
+            pop();
+            push();
+            translate(this.size / 4, 0);
+            rotate(-30);
+            line(0, 0, this.size / 8, 0);
+            pop();
+            rotate(60);
           }
-          gameState = "gameover";
+          pop();
         }
       }
-      else if (gameState === "gameover") {
-        // Display game over overlay
-        fill(0, 150);
-        rect(0, 0, width, height);
-        fill(255);
-        textAlign(CENTER, CENTER);
-        textSize(40);
-        text("Game Over, " + nickname, width / 2, height / 2 - 40);
-        textSize(20);
-        text("Final Score: " + score, width / 2, height / 2);
-        text("Refresh the page to try again.", width / 2, height / 2 + 40);
-      }
-    }
 
-    // Spawn a new snowflake with increased size
-    function spawnSnowflake() {
-      let size = random(15, 40); // Larger snowflakes
-      let x = random(size / 2, width - size / 2);
-      let y = -size;
-      let speed = random(1, 3) + level * 0.5;
-      snowflakes.push(new Snowflake(x, y, size, speed));
-    }
-
-    // Snowflake "class"
-    function Snowflake(x, y, size, speed) {
-      this.x = x;
-      this.y = y;
-      this.size = size;
-      this.speed = speed;
-
-      this.update = function () {
-        this.y += this.speed;
-        this.x += random(-0.5, 0.5);
+      // Trigger the game over state
+      function triggerGameOver() {
+        gameOver = true;
+        if (bgMusic && bgMusic.isPlaying()) {
+          bgMusic.stop();
+        }
+        if (gameOverSound && gameOverSound.isLoaded()) {
+          gameOverSound.play();
+        }
+        document.getElementById("score-display").innerText =
+          nickname + ", your final score is: " + score;
+        document.getElementById("game-over").style.display = "flex";
       }
 
-      this.display = function () {
-        drawSnowflake(this.x, this.y, this.size);
-      }
-    }
-
-    // Draw a custom snowflake shape (6-branch design)
-    function drawSnowflake(x, y, size) {
-      push();
-      translate(x, y);
-      stroke(255);
-      strokeWeight(1);
-      for (let i = 0; i < 6; i++) {
-        line(0, 0, size / 2, 0);
-        line(size / 4, 0, size / 3, -size / 8);
-        line(size / 4, 0, size / 3, size / 8);
-        rotate(PI / 3);
-      }
-      pop();
-    }
-
-    // Increase the level based on the score and adjust the spawn rate
-    function updateLevel() {
-      if (score > level * 20) {
-        level++;
-        spawnInterval = max(20, spawnInterval - 5);
-        if (levelUpSound && levelUpSound.isLoaded()) {
-          levelUpSound.play();
+      // Restart game by resetting variables
+      function restartGame() {
+        snowflakes = [];
+        snowpileHeight = 0;
+        level = 1;
+        score = 0;
+        capturedCount = 0;
+        spawnInterval = 1000;
+        lastSpawnTime = millis();
+        gameOver = false;
+        document.getElementById("game-over").style.display = "none";
+        if (bgMusic && bgMusic.isLoaded()) {
+          bgMusic.loop();
         }
       }
-    }
 
-    // Draw a vertical gradient background with night blue shades
-    function drawNightBlueBackground() {
-      // Brighter night blue colors for a visible gradient
-      let topColor = color(0, 0, 100);    // Dark blue (but a bit brighter)
-      let bottomColor = color(0, 0, 200);  // Brighter blue
-      for (let y = 0; y < height; y++) {
-        let inter = map(y, 0, height, 0, 1);
-        let c = lerpColor(topColor, bottomColor, inter);
-        stroke(c);
-        line(0, y, width, y);
-      }
-    }
-
-    // Adjust canvas size on window resize
-    function windowResized() {
-      resizeCanvas(windowWidth, windowHeight);
-    }
-
-    // Start the game when the "Start Game" button is clicked
-    document.getElementById("startBtn").addEventListener("click", function () {
-      nickname = document.getElementById("nickname").value.trim();
-      if (nickname === "") {
-        nickname = "Anonymous";
-      }
-      gameState = "playing";
-      // Hide the start screen popup
-      document.getElementById("startScreen").style.display = "none";
-      // Start background music if available
-      if (bgMusic && bgMusic.isLoaded()) bgMusic.loop();
-    });
-  </script>
-</body>
+      // Start game event listener: Hide start screen and begin gameplay
+      document
+        .getElementById("startButton")
+        .addEventListener("click", () => {
+          let inputNickname = document.getElementById("nickname").value;
+          if (inputNickname.trim() !== "") {
+            nickname = inputNickname.trim();
+          }
+          document.getElementById("start-screen").style.display = "none";
+          restartGame();
+        });
+    </script>
+  </body>
 </html>
